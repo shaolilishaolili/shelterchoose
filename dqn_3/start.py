@@ -251,16 +251,8 @@ def train():
 
 
 if __name__ == '__main__':
-
-   # train()
-   Data = {}
-   for file in dataset:
-       Data[file] = pd.read_excel(dataset_path, sheet_name=file)
-   print('**************shelter**************\n', Data['shelter'])
-   max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
-
-   Data['shelter'] = Data['shelter'][['opencost']].apply(max_min_scaler)
-   print('**************shelter**************\n', Data['shelter'])
+   train()
+ 
 """
     # 用于计算本次训练中最大的准确率以及平均准确率
     max_reward = max(episode_reward)
