@@ -236,7 +236,18 @@ def train():
     # print('**************shelter**************\n', Data['shelter'])
     # print('**************disaster**************\n', Data['disaster'])
     # print('****************connect*****************\n', Data['connect'])
+    def normalizing(file,col):
+        max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
+        colu= Data[file][[col]].apply(max_min_scaler)
+        # 安全删除，如果用del是永久删除
+        Data[file].drop([col], axis=1)
+        Data[file][col]=colu
 
+
+    normalizing('shelter','opencost')
+    normalizing('shelter', 'capacity')
+    normalizing('disaster', 'population')
+    normalizing('connect', 'shortestd')
 
     # 构建训练环境，传入数据Data
     env = Env.MyEnv(Data)
@@ -251,8 +262,20 @@ def train():
 
 
 if __name__ == '__main__':
-   train()
- 
+
+
+    train()
+
+
+
+    #capacity = Data['shelter'][['capacity']].apply(max_min_scaler)
+    # population = Data['disaster'][['population'opencost
+    # 0   1       300         1  0.000000
+    # 1   2       500         3  0.333333
+    # 2   3       700         8  1.000000]].apply(max_min_scaler)
+    # distance=Data['connect'][['shortestd']].apply(max_min_scaler)
+    # # print('**************opencost**************\n', opencost)
+    # # print('**************capacity**************\n', capacity)
 """
     # 用于计算本次训练中最大的准确率以及平均准确率
     max_reward = max(episode_reward)
