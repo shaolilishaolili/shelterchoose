@@ -12,6 +12,8 @@ from chainerrl import replay_buffer, explorers
 
 import utils
 from utility import env as Env, agent as DDQN, action_value as ActionValue
+from utility import newreward
+
 # linux命令行使用，复制以下命令即可执行 nohup python start.py --result-file result.txt  --gpu 1 --layer1-nodenum 64 --layer2-nodenum
 # 32>training_log.txt 2>&1 &
 
@@ -151,15 +153,14 @@ def train_agent(env, agent):
                 state, reward)  # 此处action是否合法（即不能重复选取同一个指标）由agent判断。env默认得到的action合法。
             count += 1
             state, reward, terminal = env.step(action)
-
+            #print('action,q, ga,state,reward:',action, q, ga,state,reward)
             if terminal:
                 # 打印出每一回合的结果
                 state_human = [i + 1 for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
-                          "train episode:{}, reward = {}, state count = {}, state = {}".format(episode, reward,
-                                                                                               len(state_human),
-                                                                                               state_human))
-
+                           "train episode:{}, reward = {}, state count = {}, state = {}".format(episode, reward,
+                                                                                                len(state_human),
+                                                                                                state_human))
                 agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
                 # if (episode + 1) % 10 == 0 and episode != 0:
@@ -184,9 +185,9 @@ def create_agent(env):
     action_size = env.action_size
     q_func = QFunction(state_size, action_size)
 
-    start_epsilon = 1.
-    end_epsilon = 0.5
-    decay_steps = state_size * MAX_EPISODE / 2  # epsilon线性下降，从1到0.3，这个下降的过程共经过decay_steps步
+    start_epsilon = 1.0
+    end_epsilon =0.3
+    decay_steps =state_size *MAX_EPISODE/2 # epsilon线性下降，从1到0.3，这个下降的过程共经过decay_steps步
     #设置decay_steps为state_size * MAX_EPISODE/2是保持agent能在前500回合（MAX_EPISODE / 2）进行探索，
     # 前500回合的步数最多为 state_size * MAX_EPISODE/2，因为每一回合至多state_size步（选择所有的避难所，每选一个是一步）
     explorer = explorers.LinearDecayEpsilonGreedy(start_epsilon, end_epsilon, decay_steps, env.random_action)
@@ -251,11 +252,15 @@ def train():
 
 if __name__ == '__main__':
 
-    train()
+   # train()
+   Data = {}
+   for file in dataset:
+       Data[file] = pd.read_excel(dataset_path, sheet_name=file)
+   print('**************shelter**************\n', Data['shelter'])
+   max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
 
-
-
-
+   Data['shelter'] = Data['shelter'][['opencost']].apply(max_min_scaler)
+   print('**************shelter**************\n', Data['shelter'])
 """
     # 用于计算本次训练中最大的准确率以及平均准确率
     max_reward = max(episode_reward)
