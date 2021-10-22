@@ -1,19 +1,4 @@
-"""
-自定义规划器 + reward函数
-日期：2021年10月12日
-规划器：
-    输入：已选择的避难所集合
-    任务：将n个社区分配到select_count个避难所（一个社区的居民为整体，不做拆分）
-    输出：矩阵z(zij就是社区i分配多少人给避难所j，值要么是0，要么是hi)
-    思路：就近分配
-reward的设计：按照规划器的分配结果z，计算相应的人口覆盖和距离，计算reward
-    输出：r=r1+r2
-    思路：epsilon约束方法
-    r1=Σhi*Is_Coveredi
-    r2=if average_dis<=epsilon 0
-        else  float('-inf')
-    average_dis=Σzij*hij/Σhi
-"""
+
 
 """
 自定义奖励函数（包含一个简单分配器）
@@ -25,29 +10,24 @@ reward的设计：按照规划器的分配结果z，计算相应的人口覆盖�
     r1:开放成本; r2:总距离； r3:总覆盖人口
 """
 import numpy as np
-
-
-DISTANCE = 15  # 规定10千米内是可覆盖的范围  20公里  距离小的话，选出来的避难所应该会多
-W1=0.8
-W2=0.9
-W3=1#通过权重控制不同方面奖励的重要程度，人员安全最重要，距离次之，成本最后考虑
+DISTANCE = 15  # 规定10千米内是可覆盖的范围
+W1=0.1
+W2=0.2
+W3=0.7#通过权重控制不同方面奖励的重要程度，人员安全最重要，距离次之，成本最后考虑
 
 def get_reward(state, data):
     shelter_number = len(data['shelter']['id'])  # 候选避难场所的总数量
     disaster_number = len(data['disaster']['id'])  # 受灾地区的总数量
-    z = np.zeros((disaster_number, shelter_number), np.int)  # 记录分配情况，每行对应一个社区，每列对应一个避难所
+    z = np.zeros((disaster_number, shelter_number), np.float)  # 记录分配情况，每行对应一个社区，每列对应一个避难所
     count = len(state)  # 用于记算本次选择的避难所数目
 
-    print("state", state)
+    # print("state", state)
     data_shelter=data['shelter']
     data_connect = data['connect']
     for i in range(len(state)):  # 删除没有被选中的避难所的信息
         if state[i] == 0:
             count -= 1
-            print('drop i',i)
             data_shelter = data_shelter.drop(i)
-            print(data['shelter'])
-            print(data_shelter)
             data_connect= data_connect.drop(index=data['connect'][(data['connect']['shelterid'] == i)].index)
             # 删除掉没有选中的避难所的距离信息
     if count==0:
@@ -73,10 +53,7 @@ def get_reward(state, data):
 
         while (assign == False) and (k < m):
             j = temp.iloc[k].at['shelterid']  # j的值就是避难所的id
-            print("temp",temp)
-            print("i",i)
-            print("state",state)
-            print("j",j)
+            j=int(j)
             residual_c = data['shelter'][(data['shelter'].id == j)]['capacity'].item()  # 避难所j的总容量
 
             for t in range(n):
@@ -85,8 +62,9 @@ def get_reward(state, data):
             if residual_c> hi or residual_c == hi:
                  assign = True
                  z[i][j - 1] = hi
+
             k += 1
-    print(z)#打印出分配结果
+    # print(z)#打印出分配结果
 
     """
         r1:开放成本
@@ -95,7 +73,7 @@ def get_reward(state, data):
         IsOpenj=避难点j是否开放
     """
     r1=-data_shelter['opencost'].sum()
-    print('r1:',r1)
+    # print('r1:',r1)
     """
         r2:总距离的奖励
         r2=-ΣΣ zij*shortest_dij
@@ -110,7 +88,7 @@ def get_reward(state, data):
             dij=tempdata[tempdata.shelterid == j+1]['shortestd'].item() #社区到避难所的距离
             r2+=dij*z[i][j]
     r2=-r2
-    print('r2:', r2)
+    # print('r2:', r2)
     """
     r3:覆盖人口的奖励
     r3=Σhi*Is_Coveredi
@@ -129,9 +107,9 @@ def get_reward(state, data):
     r3 = 0
     for i in range(n):
         r3 += hi * Is_Covered[i]
-    print('r3：',r3)
+    # print('r3：',r3)
     r=W1*r1+W2*r2+W3*r3
-    print('reward：', r)
+    # print('reward：', r)
     return r
 
 
