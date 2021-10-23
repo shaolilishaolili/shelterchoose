@@ -9,9 +9,13 @@ import chainer.links as L
 import numpy as np
 from chainer import optimizers
 from chainerrl import replay_buffer, explorers
-
 import utils
 from utility import env as Env, agent as DDQN, action_value as ActionValue
+import warnings
+warnings.filterwarnings("ignore")
+
+from utility import newreward
+from geopy.distance import geodesic  #用geodesic函数测算坐标距离
 from utility import newreward
 
 # linux命令行使用，复制以下命令即可执行 nohup python start.py --result-file result.txt  --gpu 1 --layer1-nodenum 64 --layer2-nodenum
@@ -29,21 +33,20 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--result-file', type=str, default='result.txt')
 parser.add_argument('--gpu', type=int, default=-1)
 parser.add_argument('--layer1-nodenum', type=int, default=64)
-parser.add_argument('--layer2-nodenum', type=int, default=32)
+# parser.add_argument('--layer2-nodenum', type=int, default=32)
 args = parser.parse_args()
 
 """
     *可变参数的定义
     数据集包含三部分数据，路径分别是:data文件夹下的disaster.csv,shelter.csv,connect.csv'
-    候选避难场所的总数目为 3
-    训练的轮数为1000
-    神经网络共两层，每层的节点数由命令行参数确定
+ 
 """
 # 可变参数
-dataset_path = './data/data.xlsx'  # 原始数据集
+dataset_path = './data/ddata.xlsx'  # 原始数据集
 dataset = ['disaster', 'shelter', 'connect']
-MAX_EPISODE = 1000
-net_layers = [args.layer1_nodenum, args.layer2_nodenum]
+MAX_EPISODE = 100
+# net_layers = [args.layer1_nodenum, args.layer2_nodenum]
+net_layers = [args.layer1_nodenum]
 
 # 每一轮逻辑如下
 # 1. 初始化环境，定义S和A两个list，用来保存过程中的state和action。进入循环，直到当前这一轮完成（done == True）
@@ -55,8 +58,6 @@ net_layers = [args.layer1_nodenum, args.layer2_nodenum]
 
 episode_reward = []
 
-
-# evaluate_reward = []
 
 
 class QFunction(chainer.Chain):
@@ -75,9 +76,7 @@ class QFunction(chainer.Chain):
         inpdim = obs_size
         for i, n_hid in enumerate(n_hidden_channels):
             net += [('l{}'.format(i), L.Linear(inpdim, n_hid))]
-            # net += [('norm{}'.format(i), L.BatchNormalization(n_hid))]
             net += [('_act{}'.format(i), F.relu)]
-            # net += [('_dropout{}'.format(i), F.dropout)]
             inpdim = n_hid
         # 构建网络模型：输入层、输出层和隐藏层
         net += [('output', L.Linear(inpdim, n_actions))]
@@ -117,6 +116,9 @@ def evaluate(eval_env, agent, current):
         state = eval_env.reset()
         terminal = False
         count = 0
+        Data = {}
+        for file in dataset:
+            Data[file] = pd.read_excel(dataset_path, sheet_name=file)
         while not terminal:
             action, q = agent.act(state)
 
@@ -125,12 +127,12 @@ def evaluate(eval_env, agent, current):
             state, reward, terminal = eval_env.step(action)
 
             if terminal:
-                state_human = [i + 1 for i in range(len(state)) if state[i] == 1]
-                #evaluate_reward.append(reward)
+
+                state_human = [Data['shelter'][(Data['shelter'].id == i + 1)]['场所名称'].item() for i in range(len(state))
+                               if state[i] == 1]
                 utils.log(args.result_file,
                           "evaluate episode:{}, reward = {}, state count = {}, state = {}"
                           .format(current, reward, len(state_human), state_human))
-
                 agent.stop_episode()
 
 
@@ -141,30 +143,34 @@ def train_agent(env, agent):
     terminal = TRUE 使用stop_episode_and_train结束
     每10个回合训练一次：evaluate（）
     """
+    Data = {}
+    for file in dataset:
+        Data[file] = pd.read_excel(dataset_path, sheet_name=file)
     for episode in range(MAX_EPISODE):
-
+        timestart = time.clock()
+        epochstart = time.clock()
         state = env.reset()
         terminal = False
         reward = 0
         count = 0
-
+        time_list=[]
         while not terminal:
             action, q, ga = agent.act_and_train(
                 state, reward)  # 此处action是否合法（即不能重复选取同一个指标）由agent判断。env默认得到的action合法。
             count += 1
             state, reward, terminal = env.step(action)
-            #print('action,q, ga,state,reward:',action, q, ga,state,reward)
+
             if terminal:
+                elapsed = time.clock() - epochstart
+                time_list.append(elapsed)
                 # 打印出每一回合的结果
-                state_human = [i + 1 for i in range(len(state)) if state[i] == 1]
+                state_human=[Data['shelter'][(Data['shelter'].id == i+1)]['场所名称'].item() for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
-                           "train episode:{}, reward = {}, state count = {}, state = {}".format(episode, reward,
-                                                                                                len(state_human),
-                                                                                                state_human))
+                           "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
+                                                                                                len(state_human),elapsed,state_human))
                 agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
-                # if (episode + 1) % 10 == 0 and episode != 0:
-                #      evaluate(eval_env, agent, (episode + 1) / 10)
+
 
 
 def create_agent(env):
@@ -187,9 +193,9 @@ def create_agent(env):
 
     start_epsilon = 1.0
     end_epsilon =0.3
-    decay_steps =state_size *MAX_EPISODE/2 # epsilon线性下降，从1到0.3，这个下降的过程共经过decay_steps步
-    #设置decay_steps为state_size * MAX_EPISODE/2是保持agent能在前500回合（MAX_EPISODE / 2）进行探索，
-    # 前500回合的步数最多为 state_size * MAX_EPISODE/2，因为每一回合至多state_size步（选择所有的避难所，每选一个是一步）
+
+    decay_steps =state_size *MAX_EPISODE/2
+
     explorer = explorers.LinearDecayEpsilonGreedy(start_epsilon, end_epsilon, decay_steps, env.random_action)
 
     opt = optimizers.Adam()
@@ -222,32 +228,26 @@ def train():
     """
     *train函数调用Env.MyEnv构造测试环境和训练环境
     调用create_agent创建agent，调用train_agent进行训练和测试
-
     """
     """
-    数据读取
+    数据读取并归一化
     """
     # 原始数据以Excel表格形式存储，三类数据分别存储在disaster、shelter、connect三个sheet中，使用pandas读取Excel
     # 以字典的形式存储所有数据，shelter对应的是避难所数据，disaster对应的是受灾点数据，connect对应的是路径距离数据
     Data = {}
     for file in dataset:
         Data[file] = pd.read_excel(dataset_path, sheet_name=file)
-    # print('打印数据集：')
-    # print('**************shelter**************\n', Data['shelter'])
-    # print('**************disaster**************\n', Data['disaster'])
-    # print('****************connect*****************\n', Data['connect'])
+
     def normalizing(file,col):
         max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
         colu= Data[file][[col]].apply(max_min_scaler)
-        # 安全删除，如果用del是永久删除
         Data[file].drop([col], axis=1)
         Data[file][col]=colu
 
-
-    normalizing('shelter','opencost')
-    normalizing('shelter', 'capacity')
-    normalizing('disaster', 'population')
-    normalizing('connect', 'shortestd')
+    normalizing('shelter', '开放成本（元）')
+    normalizing('shelter', '避难人数（万人）')
+    normalizing('disaster', '总户数')
+    normalizing('connect', 'distance')
 
     # 构建训练环境，传入数据Data
     env = Env.MyEnv(Data)
@@ -265,28 +265,3 @@ if __name__ == '__main__':
 
 
     train()
-
-
-
-    #capacity = Data['shelter'][['capacity']].apply(max_min_scaler)
-    # population = Data['disaster'][['population'opencost
-    # 0   1       300         1  0.000000
-    # 1   2       500         3  0.333333
-    # 2   3       700         8  1.000000]].apply(max_min_scaler)
-    # distance=Data['connect'][['shortestd']].apply(max_min_scaler)
-    # # print('**************opencost**************\n', opencost)
-    # # print('**************capacity**************\n', capacity)
-"""
-    # 用于计算本次训练中最大的准确率以及平均准确率
-    max_reward = max(episode_reward)
-    average_reward = 0
-    for i in range(len(episode_reward)):
-        average_reward += episode_reward[i]
-    average_reward = average_reward / len(episode_reward)
-    # 评估结果
-    max_evaluate_reward = max(evaluate_reward)
-    average_evaluate_reward = 0
-    for i in range(len(evaluate_reward)):
-        average_evaluate_reward += evaluate_reward[i]
-    average_evaluate_reward = average_evaluate_reward / len(evaluate_reward)
-"""
