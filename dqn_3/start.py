@@ -15,11 +15,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from utility import newreward
-from geopy.distance import geodesic  #用geodesic函数测算坐标距离
-from utility import newreward
 
-# linux命令行使用，复制以下命令即可执行 nohup python start.py --result-file result.txt  --gpu 1 --layer1-nodenum 64 --layer2-nodenum
-# 32>training_log.txt 2>&1 &
 
 """"
     *命令行参数的定义
@@ -35,17 +31,14 @@ parser.add_argument('--gpu', type=int, default=-1)
 parser.add_argument('--layer1-nodenum', type=int, default=64)
 # parser.add_argument('--layer2-nodenum', type=int, default=32)
 args = parser.parse_args()
-
 """
     *可变参数的定义
     数据集包含三部分数据，路径分别是:data文件夹下的disaster.csv,shelter.csv,connect.csv'
- 
 """
 # 可变参数
 dataset_path = './data/ddata.xlsx'  # 原始数据集
 dataset = ['disaster', 'shelter', 'connect']
 MAX_EPISODE = 100
-# net_layers = [args.layer1_nodenum, args.layer2_nodenum]
 net_layers = [args.layer1_nodenum]
 
 # 每一轮逻辑如下
@@ -55,10 +48,7 @@ net_layers = [args.layer1_nodenum]
 # 4. 如果done==True，那么应该把当前的S、A和reward送到replay buffer里（replay也应该在此时进行），往replay buffer里添加时，
 #    每一对state和action都有一个reward，这个reward应该和env返回的reward（也就是该模型的acc）和count有关。
 
-
 episode_reward = []
-
-
 
 class QFunction(chainer.Chain):
     """
@@ -67,7 +57,6 @@ class QFunction(chainer.Chain):
     *根据状态数、动作数、隐藏层个数——构建线性网络模型
     输入：obs_size ——relu——隐藏层：n_hid———relu—输出层：n_actions
     """
-
     def __init__(self, obs_size, n_actions, n_hidden_channels=None):
         super(QFunction, self).__init__()
         if n_hidden_channels is None:
@@ -121,13 +110,10 @@ def evaluate(eval_env, agent, current):
             Data[file] = pd.read_excel(dataset_path, sheet_name=file)
         while not terminal:
             action, q = agent.act(state)
-
             # 这里返回的action是一个下标值
             count += 1
             state, reward, terminal = eval_env.step(action)
-
             if terminal:
-
                 state_human = [Data['shelter'][(Data['shelter'].id == i + 1)]['场所名称'].item() for i in range(len(state))
                                if state[i] == 1]
                 utils.log(args.result_file,
@@ -135,25 +121,22 @@ def evaluate(eval_env, agent, current):
                           .format(current, reward, len(state_human), state_human))
                 agent.stop_episode()
 
-
 def train_agent(env, agent):
     """
     *多回合训练
     terminal = False时使用act_and_train函数进行训练
     terminal = TRUE 使用stop_episode_and_train结束
-    每10个回合训练一次：evaluate（）
     """
     Data = {}
     for file in dataset:
         Data[file] = pd.read_excel(dataset_path, sheet_name=file)
+    timesum = 0
     for episode in range(MAX_EPISODE):
-        timestart = time.clock()
         epochstart = time.clock()
         state = env.reset()
         terminal = False
         reward = 0
         count = 0
-        time_list=[]
         while not terminal:
             action, q, ga = agent.act_and_train(
                 state, reward)  # 此处action是否合法（即不能重复选取同一个指标）由agent判断。env默认得到的action合法。
@@ -162,16 +145,15 @@ def train_agent(env, agent):
 
             if terminal:
                 elapsed = time.clock() - epochstart
-                time_list.append(elapsed)
                 # 打印出每一回合的结果
                 state_human=[Data['shelter'][(Data['shelter'].id == i+1)]['场所名称'].item() for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
                            "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
                                                                                                 len(state_human),elapsed,state_human))
+                timesum += elapsed
                 agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
-
-
+    utils.log(args.result_file,"The total time = {}".format(timesum))
 
 def create_agent(env):
     """
@@ -197,21 +179,16 @@ def create_agent(env):
     decay_steps =state_size *MAX_EPISODE/2
 
     explorer = explorers.LinearDecayEpsilonGreedy(start_epsilon, end_epsilon, decay_steps, env.random_action)
-
     opt = optimizers.Adam()
     opt.setup(q_func)
-
     rbuf_capacity = 5 * 10 ** 3
     minibatch_size = 16
-
     steps = 1000
     replay_start_size = 20
     update_interval = 10
-    betasteps = (steps - replay_start_size) // update_interval
+    betasteps = (steps - replay_start_size) # update_interval
     rbuf = replay_buffer.PrioritizedReplayBuffer(rbuf_capacity, betasteps=betasteps)
-
     phi = lambda x: x.astype(np.float32, copy=False)  # 设置数据类型
-
     agent = DDQN.DoubleDQN(q_func, opt, rbuf, gamma=0.99,
                            explorer=explorer, replay_start_size=replay_start_size,
                            target_update_interval=10,  # target q网络多久和q网络同步
@@ -223,12 +200,12 @@ def create_agent(env):
                            episodic_update_len=16)  # episodic_update=False报错，没有这个参数
     return agent
 
-
 def train():
     """
     *train函数调用Env.MyEnv构造测试环境和训练环境
     调用create_agent创建agent，调用train_agent进行训练和测试
     """
+
     """
     数据读取并归一化
     """
@@ -262,6 +239,5 @@ def train():
 
 
 if __name__ == '__main__':
-
 
     train()
