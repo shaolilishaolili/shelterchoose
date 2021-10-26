@@ -20,15 +20,12 @@ warnings.filterwarnings("ignore")
     *命令行参数的定义
     argparse 模块可以让人轻松编写用户友好的命令行接口。程序定义它需要的参数，然后 argparse 从 sys.argv 解析出那些参数
     ArgumentParser就是解析器，通过调用 add_argument() 方法向其中添加参数
-    '--result-file'默认将结果存储到'result.txt'
     设备默认为CPU
-    隐藏层单元个数：--layer1-nodenum 64 ，layer2-nodenum 32
 """
 parser = argparse.ArgumentParser()
 parser.add_argument('--result-file', type=str, default='result.txt')
 parser.add_argument('--gpu', type=int, default=-1)
 parser.add_argument('--layer1-nodenum', type=int, default=64)
-# parser.add_argument('--layer2-nodenum', type=int, default=32)
 args = parser.parse_args()
 """
     *可变参数的定义
@@ -113,7 +110,7 @@ def evaluate(eval_env, agent, current):
             count += 1
             state, reward, terminal = eval_env.step(action)
             if terminal:
-                state_human = [Data['shelter'][(Data['shelter'].id == i + 1)]['场所名称'].item() for i in range(len(state))
+                state_human = [Data['shelter'].loc[i,'场所名称'] for i in range(len(state))
                                if state[i] == 1]
                 utils.log(args.result_file,
                           "evaluate episode:{}, reward = {}, state count = {}, state = {}"
@@ -145,7 +142,7 @@ def train_agent(env, agent, eval_env):
             if terminal:
                 elapsed = time.clock() - epochstart
                 # 打印出每一回合的结果
-                state_human=[Data['shelter'][(Data['shelter'].id == i+1)]['场所名称'].item() for i in range(len(state)) if state[i] == 1]
+                state_human=[Data['shelter'].loc[i,'场所名称'] for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
                            "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
                                                                                                 len(state_human),elapsed,state_human))
