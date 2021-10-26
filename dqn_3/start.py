@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 import time
 
@@ -13,8 +14,6 @@ import utils
 from utility import env as Env, agent as DDQN, action_value as ActionValue
 import warnings
 warnings.filterwarnings("ignore")
-
-from utility import newreward
 
 
 """"
@@ -38,7 +37,7 @@ args = parser.parse_args()
 # 可变参数
 dataset_path = './data/ddata.xlsx'  # 原始数据集
 dataset = ['disaster', 'shelter', 'connect']
-MAX_EPISODE = 100
+MAX_EPISODE = 30
 net_layers = [args.layer1_nodenum]
 
 # 每一轮逻辑如下
@@ -121,7 +120,7 @@ def evaluate(eval_env, agent, current):
                           .format(current, reward, len(state_human), state_human))
                 agent.stop_episode()
 
-def train_agent(env, agent):
+def train_agent(env, agent, eval_env):
     """
     *多回合训练
     terminal = False时使用act_and_train函数进行训练
@@ -153,6 +152,9 @@ def train_agent(env, agent):
                 timesum += elapsed
                 agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
+                if (episode + 1) % 10 == 0 and episode != 0:
+                    evaluate(eval_env, agent, (episode + 1) / 10)
+
     utils.log(args.result_file,"The total time = {}".format(timesum))
 
 def create_agent(env):
@@ -207,33 +209,25 @@ def train():
     """
 
     """
-    数据读取并归一化
+    数据读取
     """
     # 原始数据以Excel表格形式存储，三类数据分别存储在disaster、shelter、connect三个sheet中，使用pandas读取Excel
     # 以字典的形式存储所有数据，shelter对应的是避难所数据，disaster对应的是受灾点数据，connect对应的是路径距离数据
     Data = {}
     for file in dataset:
         Data[file] = pd.read_excel(dataset_path, sheet_name=file)
-
-    def normalizing(file,col):
-        max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
-        colu= Data[file][[col]].apply(max_min_scaler)
-        Data[file].drop([col], axis=1)
-        Data[file][col]=colu
-
-    normalizing('shelter', '开放成本（元）')
-    normalizing('shelter', '避难人数（万人）')
-    normalizing('disaster', '总户数')
-    normalizing('connect', 'distance')
-
+    total = len(Data['disaster']['id'])
+    Data['shelter']['避难人数（万人）']=Data['shelter']['避难人数（万人）']*10000
+    Data['disaster'] = Data['disaster'].sample(n=100,random_state=1)
+    Datacopy = copy.deepcopy(Data)
     # 构建训练环境，传入数据Data
-    env = Env.MyEnv(Data)
+    env = Env.MyEnv(Data,Datacopy,total)
     # 构建测试环境，传入数据Data,test=TRUE
-    eval_env = Env.MyEnv(Data, test=True)
+    eval_env = Env.MyEnv(Data,Datacopy,total, test=True)
 
     #创建agent并进行训练与测试，传入对应的环境
     agent = create_agent(env)
-    train_agent(env, agent)
+    train_agent(env, agent, eval_env)
 
     return env, agent
 
