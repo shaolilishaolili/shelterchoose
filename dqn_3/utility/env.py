@@ -11,7 +11,8 @@ from utility import newreward
 # 自定义环境，agent探索的环境为候选避难场所的集合，使用状态向量state表征
 # 环境模块要实现的功能有：更新状态（step）、获取奖励（get_reward)、重置环境（rest）
 class MyEnv:
-    def __init__(self, data, test=False):
+    def __init__(self ,data, Data,total, test=False):
+        self.Data = Data
         self.data = data
         self.dict = {}
         self.test = test  # 是否为测试
@@ -19,6 +20,7 @@ class MyEnv:
         self.action_size = self.state_size + 1  # 动作数也就是状态数加1（因为有一个终止动作）
         self.state = [0 for _ in range(self.state_size)]  # 初始状态向量的每个元素都为0，说明没有选中任何避难场所
         self.count = 0  # 当前已经选取的避难场所数
+        self.total = total
         self.done = False  # 是否终止选择
         # if self.test:
         #     #self.action_size = state_size  # 测试时选够max个指标，不要包含终止动作
@@ -36,12 +38,13 @@ class MyEnv:
 
     def step(self, action_index):  # 测试时传入的action是一个下标值，所以就是index
         if action_index == self.state_size:  # 如果动作超出最大值,终止
+            reward = self.get_reward()  # 从字典里查询状态对应的奖励
             self.done = True
         else:
             self.state[action_index] = 1  # 否则，设置状态向量为1
             self.count += 1
+            reward = 0
 
-        reward = self.get_reward()  # 从字典里查询状态对应的奖励
         return np.array(self.state), reward, self.done  #
 
     def get_reward(self):
@@ -49,7 +52,7 @@ class MyEnv:
         temp = '.'.join(temp)
         reward = self.dict.get(temp, -0.00000001)  # 如果当前State在字典里，就返回对应的reward数值，否则返回-0.00000001
         if reward == -0.00000001:  # 如果状态不在字典里，就调用newreward里的get_reward（）
-            reward = newreward.get_reward(self.state, self.data)
+            reward = newreward.get_reward(self.state, self.data, self.Data,self.total)
             self.add_dict(reward)  # 将state-reward放入字典
         return reward
 
