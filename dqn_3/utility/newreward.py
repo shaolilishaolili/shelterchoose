@@ -13,9 +13,9 @@ import numpy as np
 """
 通过权重控制不同方面奖励的重要程度，人员安全最重要，距离次之，成本最后考虑
 """
-W1=0.31
-W2=0.32
-W3=0.37
+W1 = 0.15
+W2 = 0.25
+W3 = 0.6
 
 """
 数据归一化
@@ -43,7 +43,6 @@ def get_reward(state, data, Data, total):
             count -= 1
             data_shelter = data_shelter.drop(i)
             Data_shelter = Data_shelter.drop(i)
-            # 删除掉没有选中的避难所的距离信息
     if count == 0:
         return 0
 
@@ -54,7 +53,7 @@ def get_reward(state, data, Data, total):
     （这里为了方便，将社区看成一个整体，一个社区的全部人口去到同一个避难所）
     """
     n = 100
-    m = 5 #只考虑距离最近的前m个避难所
+    m = 5 #分配时考虑分配给距离最近的前m个避难所
     R = -1
 
     """
@@ -62,9 +61,9 @@ def get_reward(state, data, Data, total):
     其实这里应该考虑一个极端情况，就是选出来的避难所是否能够满足所有灾害点都发生灾害时的避难人数请求
     但是数据集的数据有些问题，所以这里先考虑选出来的避难所能不能满足随机100个灾害点的避难要求
     """
-    sheltersum=data_shelter['避难人数（万人）'].sum()
-    disastersum=Data['disaster']['总户数']
-    disastersum=disastersum.sum()
+    sheltersum = data_shelter['避难人数（万人）'].sum()
+    disastersum = Data['disaster']['总户数']
+    disastersum = disastersum.sum()
     if sheltersum < disastersum:
         return R
 
@@ -85,17 +84,14 @@ def get_reward(state, data, Data, total):
             if state[j] == 0:#避难所没有被选择
                 continue
 
-            # if dmatrix[i][j] > DISTANCE:
-            #     continue
-
             d_con = Data['connect']
-            if d_con[(d_con.shelterid == j + 1)][(d_con.disasterid == i)]['distance'].item()> DISTANCE:
+            if d_con[(d_con.shelterid == j + 1)][(d_con.disasterid == i)]['distance'].item() > DISTANCE:
                 continue
 
             residual_c = Data['shelter'].loc[j,'避难人数（万人）']  # 避难所j的总容量
             for t in range(total):
                 residual_c -= z[t][j]  # 遍历z[][j-1]计算避难所j的剩余容量：总的减去已分配的(注意下标和序号j差1）
-            if residual_c > hi or residual_c == hi:
+            if residual_c > hi or residual_c == hi:#避难所容量的约束
                 assign = True
                 z[i-1][j] = hi
 
@@ -124,19 +120,21 @@ def get_reward(state, data, Data, total):
         shortest_dij=避难点j到灾害点i的距离(目前只考虑了受灾社区和避难场所之间的最短路径距离shortest_distance，
         后续会进一步考虑路径是否畅通以及相关的运输成本等问题)
     """
-    r2=0
+    r2 = 0
     """
     这是归一化之后的DISTANCE，前面分配人数作比较的时候不能归一化，因为归一化之后是个相对的量，不是实际比较的结果
     """
     DISTANCE=data['connect']['distance'].mean()
 
     for a in range(n):  # 对于每一个社区，
-        for j in range(m):  # 对于每一个避难所
+        for j in range(shelter_number):   # 对于每一个避难所
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
             dij=tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
+            if state[j] == 0:#避难所没有被选择
+                continue
             r2 += dij*z[i-1][j]
-    r2=-r2
+    r2 = -r2
 
     """
     r3:覆盖人口的奖励
@@ -147,16 +145,20 @@ def get_reward(state, data, Data, total):
     Is_Covered = np.zeros(total, np.int)
     # 计算Is_Covered:如果社区i的DISTANCE范围内有避难所开放，它就是被覆盖的
     for a in range(n):  # 对于每一个社区，
-        for j in range(m):  # 对于每一个避难所
+        for j in range(shelter_number): # 对于每一个避难所
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
             dij = tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
+
+            #只把受灾害的点分给选中为避难所的位置
+            if state[j] == 0:#避难所没有被选择
+                continue
             if dij < DISTANCE:
                 Is_Covered[i-1] = 1
                 continue
     r3 = 0
     for a in range(n):
-        i=q[a]
+        i = q[a]
         hi = data['disaster'].loc[i-1,'总户数']
         r3 += hi * Is_Covered[i-1]
     r = W1*r1+W2*r2+W3*r3
