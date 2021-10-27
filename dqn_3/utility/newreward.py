@@ -83,11 +83,9 @@ def get_reward(state, data, Data, total):
             j = ind[k]  # ind[k]的值就是避难所的索引
             if state[j] == 0:#避难所没有被选择
                 continue
-
             d_con = Data['connect']
             if d_con[(d_con.shelterid == j + 1)][(d_con.disasterid == i)]['distance'].item() > DISTANCE:
                 continue
-
             residual_c = Data['shelter'].loc[j,'避难人数（万人）']  # 避难所j的总容量
             for t in range(total):
                 residual_c -= z[t][j]  # 遍历z[][j-1]计算避难所j的剩余容量：总的减去已分配的(注意下标和序号j差1）
@@ -126,12 +124,12 @@ def get_reward(state, data, Data, total):
     """
     DISTANCE=data['connect']['distance'].mean()
 
-    for a in range(n):  # 对于每一个社区，
-        for j in range(shelter_number):   # 对于每一个避难所
+    for a in range(n):  # 社区，
+        for j in range(len(data_shelter)): #避难所
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
             dij=tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
-            if state[j] == 0:#避难所没有被选择
+            if state[j] == 0:
                 continue
             r2 += dij*z[i-1][j]
     r2 = -r2
@@ -144,15 +142,13 @@ def get_reward(state, data, Data, total):
     """
     Is_Covered = np.zeros(total, np.int)
     # 计算Is_Covered:如果社区i的DISTANCE范围内有避难所开放，它就是被覆盖的
-    for a in range(n):  # 对于每一个社区，
-        for j in range(shelter_number): # 对于每一个避难所
+    for a in range(n):  # 社区
+        for j in range(len(data_shelter)): #避难所
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
-            dij = tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
-
-            #只把受灾害的点分给选中为避难所的位置
-            if state[j] == 0:#避难所没有被选择
+            if state[j] == 0:
                 continue
+            dij = tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
             if dij < DISTANCE:
                 Is_Covered[i-1] = 1
                 continue
