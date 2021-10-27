@@ -128,7 +128,7 @@ def train_agent(env, agent, eval_env):
         Data[file] = pd.read_excel(dataset_path, sheet_name=file)
     timesum = 0
     for episode in range(MAX_EPISODE):
-        epochstart = time.clock()
+        epochstart = time.time()
         state = env.reset()
         terminal = False
         reward = 0
@@ -140,7 +140,7 @@ def train_agent(env, agent, eval_env):
             state, reward, terminal = env.step(action)
 
             if terminal:
-                elapsed = time.clock() - epochstart
+                elapsed = time.time() - epochstart
                 # 打印出每一回合的结果
                 state_human = [Data['shelter'].loc[i,'场所名称'] for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
