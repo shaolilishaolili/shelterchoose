@@ -13,9 +13,9 @@ import numpy as np
 """
 通过权重控制不同方面奖励的重要程度，人员安全最重要，距离次之，成本最后考虑
 """
-W1 = 0.15
-W2 = 0.25
-W3 = 0.6
+W1 = 0.25
+W2 = 0.35
+W3 = 0.4
 
 """
 数据归一化
@@ -53,7 +53,7 @@ def get_reward(state, data, Data, total):
     （这里为了方便，将社区看成一个整体，一个社区的全部人口去到同一个避难所）
     """
     n = 100
-    m = 5 #分配时考虑分配给距离最近的前m个避难所
+    m = 10 #分配时考虑分配给距离最近的前m个避难所
     R = -1
 
     """
@@ -124,8 +124,8 @@ def get_reward(state, data, Data, total):
     """
     DISTANCE=data['connect']['distance'].mean()
 
-    for a in range(n):  # 社区，
-        for j in range(len(data_shelter)): #避难所
+    for a in range(n):
+        for j in range(m):
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
             dij=tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
@@ -143,7 +143,7 @@ def get_reward(state, data, Data, total):
     Is_Covered = np.zeros(total, np.int)
     # 计算Is_Covered:如果社区i的DISTANCE范围内有避难所开放，它就是被覆盖的
     for a in range(n):  # 社区
-        for j in range(len(data_shelter)): #避难所
+        for j in range(m):
             i = q[a]
             tempdata = data['connect'][(data['connect'].disasterid==i)]
             if state[j] == 0:
