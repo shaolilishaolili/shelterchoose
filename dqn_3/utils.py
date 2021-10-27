@@ -1,14 +1,6 @@
 import csv
 import os
 
-import pefile
-
-#from utility import reward
-
-MAL_PATH = "samples/malicious"
-BENI_PATH = "samples/benign"
-SAMPLE_CSV = "data/training_data_4grams.csv"
-
 # 读取csv
 def load_csv(data_path):
     data = []
