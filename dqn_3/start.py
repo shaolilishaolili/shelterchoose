@@ -34,7 +34,7 @@ args = parser.parse_args()
 # 可变参数
 dataset_path = './data/ddata.xlsx'  # 原始数据集
 dataset = ['disaster', 'shelter', 'connect']
-MAX_EPISODE = 30
+MAX_EPISODE = 100
 net_layers = [args.layer1_nodenum]
 
 # 每一轮逻辑如下
@@ -142,7 +142,7 @@ def train_agent(env, agent, eval_env):
             if terminal:
                 elapsed = time.clock() - epochstart
                 # 打印出每一回合的结果
-                state_human=[Data['shelter'].loc[i,'场所名称'] for i in range(len(state)) if state[i] == 1]
+                state_human = [Data['shelter'].loc[i,'场所名称'] for i in range(len(state)) if state[i] == 1]
                 utils.log(args.result_file,
                            "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
                                                                                                 len(state_human),elapsed,state_human))
@@ -173,9 +173,9 @@ def create_agent(env):
     q_func = QFunction(state_size, action_size)
 
     start_epsilon = 1.0
-    end_epsilon =0.3
+    end_epsilon = 0.3
 
-    decay_steps =state_size *MAX_EPISODE/2
+    decay_steps = state_size * MAX_EPISODE/2
 
     explorer = explorers.LinearDecayEpsilonGreedy(start_epsilon, end_epsilon, decay_steps, env.random_action)
     opt = optimizers.Adam()
