@@ -13,23 +13,28 @@ import numpy as np
 """
 通过权重控制不同方面奖励的重要程度，人员安全最重要，距离次之，成本最后考虑
 """
-W1 = 0.15
-W2 = 0.3
-W3 = 0.55
+W1 = 0.1
+W2 = 0.2
+W3 = 0.7
 
 """
 数据归一化
 """
-def normalizing(file, col, data):
-    max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
-    colu = data[file][[col]].apply(max_min_scaler)
-    data[file].drop([col], axis=1)
-    data[file][col] = colu
+# def normalizing(file, col, data):
+#     max_min_scaler = lambda x: (x - np.min(x)) / (np.max(x) - np.min(x))
+#     colu = data[file][[col]].apply(max_min_scaler)
+#     data[file].drop([col], axis=1)
+#     data[file][col] = colu
 
 
-def get_reward(state, data, Data, total):
+def normalize(x):
+    x = (x - np.min(x)) / (np.max(x) - np.min(x))
+    return x
 
-    shelter_number = len(data['shelter']['id'])  # 候选避难场所的总数量
+
+def get_reward(state, Data, total,r_min_max):
+
+    shelter_number = len(Data['shelter']['id'])  # 候选避难场所的总数量
     z = np.zeros((total, shelter_number), np.float)  # 记录分配情况，每行对应一个社区，每列对应一个避难所
     count = len(state)  # 用于记算本次选择的避难所数目
     data_shelter = Data['shelter']
@@ -94,10 +99,10 @@ def get_reward(state, data, Data, total):
                 z[i-1][j] = hi
 
 
-    normalizing('shelter', '开放成本（元）', data)
-    normalizing('shelter', '避难人数（万人）', data)
-    normalizing('disaster', '总户数', data)
-    normalizing('connect', 'distance', data)
+    # normalizing('shelter', '开放成本（元）', data)
+    # normalizing('shelter', '避难人数（万人）', data)
+    # normalizing('disaster', '总户数', data)
+    # normalizing('connect', 'distance', data)
 
     """
         r1:开放成本
@@ -122,15 +127,15 @@ def get_reward(state, data, Data, total):
     """
     这是归一化之后的DISTANCE，前面分配人数作比较的时候不能归一化，因为归一化之后是个相对的量，不是实际比较的结果
     """
-    DISTANCE=data['connect']['distance'].mean()
+    DISTANCE=Data['connect']['distance'].mean()
 
     for a in range(n):
         for j in range(shelter_number):
             if state[j] == 0:
                 continue
             i = q[a]
-            tempdata = data['connect'][(data['connect'].disasterid==i)]
-            dij=tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
+            tempdata = Data['connect'][(Data['connect'].disasterid==i)]
+            dij = tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
             r2 += dij*z[i-1][j]
     r2 = -r2
 
@@ -147,7 +152,7 @@ def get_reward(state, data, Data, total):
             if state[j] == 0:
                 continue
             i = q[a]
-            tempdata = data['connect'][(data['connect'].disasterid==i)]
+            tempdata = Data['connect'][(Data['connect'].disasterid==i)]
             dij = tempdata[tempdata.shelterid == j+1]['distance'].item() #社区到避难所的距离
             if dij < DISTANCE:
                 Is_Covered[i-1] = 1
@@ -155,7 +160,11 @@ def get_reward(state, data, Data, total):
     r3 = 0
     for a in range(n):
         i = q[a]
-        hi = data['disaster'].loc[i-1,'总户数']
+        hi = Data['disaster'].loc[i-1,'总户数']
         r3 += hi * Is_Covered[i-1]
+
+    r1 = (r1 - r_min_max[0]) / (r_min_max[1] - r_min_max[0])
+    r2 = (r2 - r_min_max[2]) / (r_min_max[3] - r_min_max[2])
+    r3 = (r3 - r_min_max[4]) / (r_min_max[5] - r_min_max[4])
     r = W1*r1+W2*r2+W3*r3
     return r
