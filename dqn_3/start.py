@@ -182,7 +182,7 @@ def create_agent(env):
     opt.setup(q_func)
     rbuf_capacity = 5 * 10 ** 3
     minibatch_size = 16
-    steps = 1000
+    steps = 100
     replay_start_size = 20
     update_interval = 10
     betasteps = (steps - replay_start_size) # update_interval
@@ -216,11 +216,20 @@ def train():
     total = len(Data['disaster']['id'])
     Data['shelter']['避难人数（万人）']=Data['shelter']['避难人数（万人）']*10000
     Data['disaster'] = Data['disaster'].sample(n=100,random_state=1)
-    Datacopy = copy.deepcopy(Data)
+
+    r1min = Data['shelter']['开放成本（元）'].min()
+    r1max = Data['shelter']['开放成本（元）'].sum()
+    distance = Data['connect']['distance']
+    DISTANCE = distance.mean()
+    r2min = 0
+    r2max = DISTANCE * Data['disaster']['总户数'].sum()
+    r3min = 0
+    r3max = Data['disaster']['总户数'].sum()
+    r_min_max=[r1min,r1max,r2min,r2max,r3min,r3max]
     # 构建训练环境，传入数据Data
-    env = Env.MyEnv(Data,Datacopy,total)
+    env = Env.MyEnv(Data,total,r_min_max)
     # 构建测试环境，传入数据Data,test=TRUE
-    eval_env = Env.MyEnv(Data,Datacopy,total, test=True)
+    eval_env = Env.MyEnv(Data,total,r_min_max, test=True)
 
     #创建agent并进行训练与测试，传入对应的环境
     agent = create_agent(env)
@@ -231,4 +240,5 @@ def train():
 
 if __name__ == '__main__':
 
-    train()
+     train()
+
