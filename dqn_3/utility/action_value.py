@@ -15,7 +15,7 @@ import chainer
 from chainer import cuda
 from chainer import functions as F
 import numpy as np
-
+import random
 
 class DiscreteActionValue(ActionValue):
     """Q-function output for discrete action space.
@@ -40,28 +40,21 @@ class DiscreteActionValue(ActionValue):
 
     @cached_property
     def greedy_actions_with_state(self): #结合state的贪婪策略
-        data = self.q_values.data.astype(np.float)
-        # print("data: ", data, len(data))
-        # print("state: ", self.state, len(self.state))
+        data = self.q_values.data.astype(np.float) #data是所有的Q值，也就是Q表
+        #action = np.argmax(data, axis=1)[0]  # 根据贪婪策略，选择Q值最大的动作
         while True:
-            action = np.argmax(data, axis=1)[0] #当前最大的Q对应的动作（这里的action其实就是下标，对应特征从0到603，所以不用减1）
-
-            # print("action:", action)
-            # print("self.state[0][action]",self.state[0][action])
+            action = np.argmax(data, axis=1)[0] #根据贪婪策略，选择Q值最大的动作
+            # print(self.state[0][4])
+            # print(self.state[0][4][action])
             # 设置规则降低q_value，防止盯着一个动作选
-            if action < self.state.size and self.state[0][action] == 1: #如果这个动作没有超出状态空间且该动作已被选择
-                """
-                len(self.state)不对，改成self.state.size才是604
-                """
-
-                # data[0][action] /= 2
-                data[0][action] = -100000 #将Q值降低
+            if action < self.n_actions and self.state[0][6][action]==1: #如果这个动作没有超出避难所个数且该动作已被选择
+                data[0][action] /= 2
+                jumpout = random.randint(1, 100)  # 为了避免死循环，以10%的概率跳出--可调的超参数
+                if jumpout < 10:
+                    break
             else:
                 break
-        # if action == len(self.state):
-        #     action = -1
 
-        # print("q is {}, action is {}".format(data, action))
 
         return chainer.Variable(np.array([action]).astype(np.int32))
         # return chainer.Variable(np.array([-1]).astype(np.int32))

@@ -1,54 +1,99 @@
+import copy
 import random
 import numpy as np
 from utility import newreward
 
-
-# from utility import reward as cls
-
-
-# action space 中的最后一个动作为终止
-
 # 自定义环境，agent探索的环境为候选避难场所的集合，使用状态向量state表征
 # 环境模块要实现的功能有：更新状态（step）、获取奖励（get_reward)、重置环境（rest）
 class MyEnv:
-    def __init__(self ,data,total,r_min_max, test=False):
+    def __init__(self, data,disaster_num,shelter_num,r_min_max,test=False):
+        self.shelter_num=shelter_num
+        self.disaster_num=disaster_num
         self.data = data
         self.dict = {}
-        self.test = test  # 是否为测试
-        self.state_size = len(self.data['shelter']['id'])  # 状态数也就是候选避难场所的总个数
-        self.action_size = self.state_size + 1  # 动作数也就是状态数加1（因为有一个终止动作）
-        self.state = [0 for _ in range(self.state_size)]  # 初始状态向量的每个元素都为0，说明没有选中任何避难场所
-        self.count = 0  # 当前已经选取的避难场所数
-        self.total = total
+        #self.test = test  # 是否为测试
+        self.state_size=7*(shelter_num + 1) #状态的尺寸是3个向量、3个数值"拉平"
+        self.action_size = shelter_num + 1  # 动作数也就是避难所个数加1（因为可以选择不避难）
+        self.step_size = disaster_num # 步数等于受灾点的个数
+        self.r_min_max = r_min_max
+        self.state = {}  # 初始状态,采用字典的形式，存放各避难所的剩余容量和分配情况
+        self.state['id']=np.zeros(self.shelter_num + 1, np.int) #当前受灾点的id
+        self.state['need']=np.zeros(self.shelter_num + 1, np.int) #当前受灾点是否需要避难
+        self.state['population']=np.zeros(self.shelter_num + 1, np.int)#当前受灾点的人数
+        self.state['distance'] = np.zeros(shelter_num + 1, np.float)  # 当前受灾点到每一个避难所的距离
+        self.state['is_open'] = np.zeros(shelter_num + 1, np.int) #避难所是否开放
+        #self.state['r_capacity']=data['shelter']['避难人数（万人）'].to_numpy()#避难所的剩余容量
+        self.state['r_capacity'] = copy.deepcopy(self.data['shelter']['避难人数（万人）'].to_numpy())
+        self.state['r_capacity'] = np.append(self.state['r_capacity'], np.array([0]))
+        self.state['is_choose']=np.zeros(shelter_num + 1, np.int) #是否被选择，与isopen有区别，选择以后不一定开放，需要满足容量、距离约束
+        #data['connect'][(data['connect']['disasterid'] == 1)]
+        self.step_count = 0  # 当前步数
         self.done = False  # 是否终止选择
-        self.r_min_max=r_min_max
+        self.alloc=np.zeros((disaster_num,shelter_num),np.float)
+        self.DISTANCE=data['connect']['distance'].mean()
 
-    """
-    step为状态更新函数，根据St,At，得到St+1
-    更新的规则是：当action_index在(0,state_size-1)之间，执行选择动作，把State向量中对应下标的元素置为1
-    当action_index=state_size，执行终止动作，将done置为Ture
-    每次更新都要根据目前选择的避难所集合，获取reward,
-        reward的获取规则是：先将当前的状态向量传入self.get_reward,如果能在字典中查询到对应的奖励，就直接返回该奖励
-        如果字典中没有相关记录，就调用newreward模块中的get_reward函数，并把state-reward存入字典，以备下次查询
-    """
+    def step(self,action_index,data):  # 测试时传入的action是一个下标值，它表示被选中的避难所的索引，当等于shelter_num时表示不避难
 
-    def step(self, action_index):  # 测试时传入的action是一个下标值，所以就是index
-        if action_index == self.state_size:  # 如果动作超出最大值,终止
-            reward = self.get_reward()  # 从字典里查询状态对应的奖励
+
+        if self.step_count == self.step_size: #如果步数达到受灾点个数，终止该回合，计算奖励
+            reward = self.get_reward()  # 计算奖励
             self.done = True
-        else:
-            self.state[action_index] = 1  # 否则，设置状态向量为1
-            self.count += 1
-            reward = 0
 
-        return np.array(self.state), reward, self.done  #
+        else:  # 否则，进行状态更新，
+            #print(type(self.state))
+
+            d=data['disaster']['id'].to_numpy()
+            self.state['id'][0]=d[self.step_count]#更新id
+            d=data['disaster']['isDisaster'].to_numpy()
+            self.state['need'][0] = d[self.step_count]#更新是否需要避难
+            # if action_index != self.shelter_num:
+            self.state['is_choose'][action_index] = 1
+            if (self.state['need'][0] == 0): #不需要避难
+                if action_index == self.shelter_num: #选的就是不避难
+                    reward=0
+                else:   #选了避难所
+                    reward=-1
+
+            else:#如果需要避难就按照约束修改相应的isopen和alloc
+
+                d=data['disaster']['总户数'].to_numpy()
+                self.state['population'][0] = d[self.step_count]
+                if action_index != self.shelter_num:
+                    #但在进行分配前需要先考虑目前的剩余容量是否满足要求
+                    #self.state['distance'][action_index] = data['connect'][(data['connect']['disasterid'] == self.state['id'][0] + 1)]['distance'].to_numpy()
+                    # print(self.state['r_capacity'][0:10])
+                    distance = data['connect'][(data['connect']['disasterid'] == self.state['id'][0])]
+                    self.state['distance'][action_index] = distance[(distance['shelterid'] == action_index + 1)][
+                        'distance']
+                    if self.state['r_capacity'][action_index]>=d[self.step_count] and self.state['distance'][action_index]<self.DISTANCE :#容量约束与距离约束同时满足时，进行分配and self.state['distance'][action_index]<self.DISTANCE
+                        #print('yes')
+                        self.state['is_open'][action_index] = 1  #被选中的避难所开放
+                        self.state['r_capacity'][action_index]-=d[self.step_count] #更新容量
+                        self.alloc[self.step_count][action_index]=d[self.step_count] #记录分配信息
+
+                    else:    #容量不满足要求，返回一个负的奖励
+                        reward=-1
+                        #return np.array(list(self.state.values())), reward, self.done先转为list,再转为array
+                        return np.array(list(self.state.values())), reward, self.done
+
+                reward = 0
+
+
+
+        #return np.array(list(self.state.values())), reward, self.done
+        self.step_count += 1
+        #print('step',self.step_count )
+        return np.array(list(self.state.values())), reward, self.done
 
     def get_reward(self):
         temp = [str(x) for x in self.state]  # 状态向量里的每个值转为字符串
         temp = '.'.join(temp)
+
         if temp not in self.dict:  # 如果状态不在字典里，就调用newreward里的get_reward（）
-            reward = newreward.get_reward(self.state, self.data, self.total,self.r_min_max)
+            reward = newreward.get_reward(self.state,self.data,self.r_min_max,self.alloc)
             self.add_dict(reward)  # 将state-reward放入字典
+        else:
+            reward = self.dict.get(temp)
         return reward
 
     def add_dict(self, reward):
@@ -59,15 +104,27 @@ class MyEnv:
     # 使用字典的好处：不用重复计算reward
 
     def reset(self):
-        self.state = [0 for _ in range(self.state_size)]  # 初始状态向量的每个元素都为0
-        self.count = 0  # 当前已经选取的避难所个数
-        self.done = False  # 是否终止
-        return np.array(self.state)
+        self.dict = {}
+        self.state_size = 7 * self.shelter_num # 状态的尺寸是3个向量、3个数值"拉平"
+        self.action_size = self.shelter_num + 1  # 动作数也就是避难所个数加1（因为可以选择不避难）
+        self.step_size = self.disaster_num  # 步数等于受灾点的个数
+        self.state = {}  # 初始状态,采用字典的形式，存放各避难所的剩余容量和分配情况
+        self.state['id'] = np.zeros(self.shelter_num + 1, np.int)  # 当前受灾点的id
+        self.state['need'] = np.zeros(self.shelter_num + 1, np.int)  # 当前受灾点是否需要避难
+        self.state['population'] = np.zeros(self.shelter_num + 1, np.int)  # 当前受灾点的人数
+        self.state['distance'] = np.zeros(self.shelter_num + 1, np.float)  # 当前受灾点到每一个避难所的距离
+        self.state['is_open'] = np.zeros(self.shelter_num + 1, np.int)  # 避难所是否开放
+        # self.state['r_capacity']=data['shelter']['避难人数（万人）'].to_numpy()#避难所的剩余容量
+        self.state['r_capacity'] = copy.deepcopy(self.data['shelter']['避难人数（万人）'].to_numpy())
+        self.state['r_capacity'] = np.append(self.state['r_capacity'], np.array([0]))
+        self.state['is_choose'] = np.zeros(self.shelter_num + 1, np.int)  # 是否被选择，与isopen有区别，选择以后不一定开放，需要满足容量、距离约束
 
-    def random_action(self): #在环境中还定义了如何随机地进行动作选择，也就是产生随机数，范围从0到state_size,但action=state_size表示final
-        while True:
-            action = random.randint(0, self.action_size - 1)# 如果选择的action对应的避难所已被选中，继续产生随机数
+        self.count = 0  # 当前已经选取的避难场所数
+        self.step_count = 0  # 当前步数
+        self.done = False  # 是否终止选择
+        self.alloc = np.zeros((self.disaster_num, self.shelter_num), np.float)
+        return np.array(list(self.state.values()))
 
-            if action == self.action_size - 1 or self.state[action] == 0:  #直到选到一个未被选择的避难所或选到final
-                break
+    def random_action(self):  # 在环境中还定义了如何随机地进行动作选择，也就是产生随机数，范围从0到action_size
+        action = random.randint(0, self.action_size - 1)
         return action
