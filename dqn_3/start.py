@@ -1,8 +1,7 @@
 import argparse
-import copy
 import os
 import time
-
+import copy
 import pandas as pd
 import chainer
 import chainer.functions as F
@@ -91,7 +90,7 @@ class QFunction(chainer.Chain):
         # 返回一个动作空间
 
 
-def evaluate(eval_env, agent, current):
+def evaluate(data,eval_env, agent, current):
     """
     *单回合测试
     使用act函数选择动作
@@ -101,56 +100,68 @@ def evaluate(eval_env, agent, current):
         state = eval_env.reset()
         terminal = False
         count = 0
-        Data = {}
-        for file in dataset:
-            Data[file] = pd.read_excel(dataset_path, sheet_name=file)
+
         while not terminal:
-            action, q = agent.act(state)
-            # 这里返回的action是一个下标值
             count += 1
-            state, reward, terminal = eval_env.step(action)
+            action, q = agent.act(state)
+            #print('action',action)
+            # 这里返回的action是一个下标值
+            state, reward, terminal = eval_env.step(action,data)
+            #print('terminal',terminal)
+            #print(state, reward, terminal)
             if terminal:
-                state_human = [Data['shelter'].loc[i,'场所名称'] for i in range(len(state))
-                               if state[i] == 1]
+                # 打印出每一回合的结果
+                shelter_num = len(data['shelter']['id'])
+                state_human = [data['shelter'].loc[i, '场所名称'] for i in range(shelter_num) if state[4][i] == 1]
+
                 utils.log(args.result_file,
                           "evaluate episode:{}, reward = {}, state count = {}, state = {}"
                           .format(current, reward, len(state_human), state_human))
                 agent.stop_episode()
 
-def train_agent(env, agent, eval_env):
-    """
-    *多回合训练
-    terminal = False时使用act_and_train函数进行训练
-    terminal = TRUE 使用stop_episode_and_train结束
-    """
-    Data = {}
-    for file in dataset:
-        Data[file] = pd.read_excel(dataset_path, sheet_name=file)
+def train_agent(data,env, agent, eval_env):
+
     timesum = 0
+    """
+       多回合训练
+        terminal = False时使用act_and_train函数进行训练
+        terminal = TRUE 使用stop_episode_and_train结束
+    """
+
     for episode in range(MAX_EPISODE):
         epochstart = time.time()
         state = env.reset()
+        #State=np.array(list(copy.deepcopy(state).values()))
+        #
+        # print('state：')
+        # print(state)
+
         terminal = False
         reward = 0
-        count = 0
+
         while not terminal:
             action, q, ga = agent.act_and_train(
                 state, reward)  # 此处action是否合法（即不能重复选取同一个指标）由agent判断。env默认得到的action合法。
-            count += 1
-            state, reward, terminal = env.step(action)
+
+            state, reward, terminal= env.step(action,data)
+            #State = np.array(list(copy.deepcopy(state).values()))
+            #print(state['is_open'])
 
             if terminal:
                 elapsed = time.time() - epochstart
                 # 打印出每一回合的结果
-                state_human = [Data['shelter'].loc[i,'场所名称'] for i in range(len(state)) if state[i] == 1]
+                shelter_num = len(data['shelter']['id'])
+                state_human = [data['shelter'].loc[i,'场所名称'] for i in range(shelter_num )if state[4][i] == 1]
+
+
                 utils.log(args.result_file,
                            "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
                                                                                                 len(state_human),elapsed,state_human))
                 timesum += elapsed
-                agent.stop_episode_and_train(state, reward, terminal)
+                #agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
                 if (episode + 1) % 10 == 0 and episode != 0:
-                    evaluate(eval_env, agent, (episode + 1) / 10)
+                    evaluate(data,eval_env, agent, (episode + 1) / 10)
 
     utils.log(args.result_file,"The total time = {}".format(timesum))
 
@@ -168,33 +179,40 @@ def create_agent(env):
     5.构建agent
         调用utility中的agent
     """
-    state_size = env.state_size
+    state_size=env.state_size
     action_size = env.action_size
     q_func = QFunction(state_size, action_size)
 
     start_epsilon = 1.0
     end_epsilon = 0.3
 
-    decay_steps = state_size * MAX_EPISODE/2
+    decay_steps = 100 * MAX_EPISODE/2
 
     explorer = explorers.LinearDecayEpsilonGreedy(start_epsilon, end_epsilon, decay_steps, env.random_action)
     opt = optimizers.Adam()
     opt.setup(q_func)
     rbuf_capacity = 5 * 10 ** 3
     minibatch_size = 16
-    steps = 100
+    steps = 1000
     replay_start_size = 20
     update_interval = 10
     betasteps = (steps - replay_start_size) # update_interval
     rbuf = replay_buffer.PrioritizedReplayBuffer(rbuf_capacity, betasteps=betasteps)
-    phi = lambda x: x.astype(np.float32, copy=False)  # 设置数据类型
+    phi = lambda x: x.astype(np.float32, copy=False)  # 设置数据类型x.astype报错 dict没有astype
+    # def myfunction(x):
+    #     if type(x)=='dict':
+    #         X=np.array(list(x.values()))
+    #         return X.astype(np.float32, copy=False)
+    #     return x.astype(np.float32, copy=False)
+    #phi=myfunction(x)
     agent = DDQN.DoubleDQN(q_func, opt, rbuf, gamma=0.99,
                            explorer=explorer, replay_start_size=replay_start_size,
                            target_update_interval=10,  # target q网络多久和q网络同步
                            update_interval=update_interval,
-                           phi=phi, minibatch_size=minibatch_size,
+                           minibatch_size=minibatch_size,
                            target_update_method='hard',
                            soft_update_tau=1e-2,
+                           phi=phi,
                            gpu=args.gpu,  # 设置是否使用gpu
                            episodic_update_len=16)  # episodic_update=False报错，没有这个参数
     return agent
@@ -213,32 +231,40 @@ def train():
     Data = {}
     for file in dataset:
         Data[file] = pd.read_excel(dataset_path, sheet_name=file)
-    total = len(Data['disaster']['id'])
-    Data['shelter']['避难人数（万人）']=Data['shelter']['避难人数（万人）']*10000
-    Data['disaster'] = Data['disaster'].sample(n=100,random_state=1)
 
+    Data['shelter']['避难人数（万人）'] = Data['shelter']['避难人数（万人）'] * 10000
+    Data['disaster'] = Data['disaster'].sample(n=100, random_state=1)
+
+    disaster_num = len(Data['disaster']['id'])
+    shelter_num = len(Data['shelter']['id'])
+    #Datacopy = copy.deepcopy(Data)
+    # 构建训练环境，传入数据Data
     r1min = Data['shelter']['开放成本（元）'].min()
     r1max = Data['shelter']['开放成本（元）'].sum()
     distance = Data['connect']['distance']
     DISTANCE = distance.mean()
     r2min = 0
-    r2max = DISTANCE * Data['disaster']['总户数'].sum()
+    r2max = -DISTANCE * Data['disaster']['总户数'].sum()
     r3min = 0
     r3max = Data['disaster']['总户数'].sum()
-    r_min_max=[r1min,r1max,r2min,r2max,r3min,r3max]
+    r_min_max = [r1min, r1max, r2min, r2max, r3min, r3max]
     # 构建训练环境，传入数据Data
-    env = Env.MyEnv(Data,total,r_min_max)
+    env = Env.MyEnv(Data,disaster_num,shelter_num,r_min_max)
     # 构建测试环境，传入数据Data,test=TRUE
-    eval_env = Env.MyEnv(Data,total,r_min_max, test=True)
+    eval_env = Env.MyEnv(Data,disaster_num,shelter_num,r_min_max,test=True)
 
     #创建agent并进行训练与测试，传入对应的环境
     agent = create_agent(env)
-    train_agent(env, agent, eval_env)
+    train_agent(Data,env, agent, eval_env)
 
     return env, agent
 
 
 if __name__ == '__main__':
 
-     train()
+    train()
+
+
+
+
 
