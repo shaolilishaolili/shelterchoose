@@ -12,8 +12,8 @@ from chainerrl import replay_buffer, explorers
 import utils
 from utility import env as Env, agent as DDQN, action_value as ActionValue
 import warnings
+import matplotlib.pyplot as plt
 warnings.filterwarnings("ignore")
-
 
 """"
     *命令行参数的定义
@@ -22,10 +22,27 @@ warnings.filterwarnings("ignore")
     设备默认为CPU
 """
 parser = argparse.ArgumentParser()
-parser.add_argument('--result-file', type=str, default='result.txt')
 parser.add_argument('--gpu', type=int, default=-1)
 parser.add_argument('--layer1-nodenum', type=int, default=64)
+parser.add_argument('--lr',type=float, help='Learning rate', default=0.001)
+parser.add_argument('--gamma',type=float, help='Discount factor', default=0.8)
+parser.add_argument('--steps', type=int, help='steps', default=1000)
+parser.add_argument('--minibatch_size', type=int, help='min batch size', default=16)
+parser.add_argument('--rbuf_capacity', type=int, help='experience replay pool size', default=5 * 10 ** 3)
+parser.add_argument('--replay_start_size', type=int, help='replay_start_size', default=20)
+parser.add_argument('--update_interval', type=int, help='update_interval', default=10)
+parser.add_argument('--MAX_EPISODE', type=int, help='MAX_EPISODE', default=10)
+
 args = parser.parse_args()
+
+MAX_EPISODE = args.MAX_EPISODE
+gamma = args.gamma
+minibatch_size = args.minibatch_size
+rbuf_capacity = args.rbuf_capacity
+replay_start_size = args.replay_start_size
+update_interval = args.update_interval
+steps = args.steps
+
 """
     *可变参数的定义
     数据集包含三部分数据，路径分别是:data文件夹下的disaster.csv,shelter.csv,connect.csv'
@@ -33,9 +50,9 @@ args = parser.parse_args()
 # 可变参数
 dataset_path = './data/ddata.xlsx'  # 原始数据集
 dataset = ['disaster', 'shelter', 'connect']
-MAX_EPISODE = 100
+MAX_EPISODE = 10
 net_layers = [args.layer1_nodenum]
-
+result_file = str('result'+'_numepisode' + str(MAX_EPISODE)+'_gamma' + str(gamma) + '_batchsize' + str(minibatch_size) + '_rbufcapacity' +str(rbuf_capacity) + '.txt')
 # 每一轮逻辑如下
 # 1. 初始化环境，定义S和A两个list，用来保存过程中的state和action。进入循环，直到当前这一轮完成（done == True）
 # 2. 在每一步里，首先选择一个action，此处先用简单的act()代替
@@ -44,6 +61,7 @@ net_layers = [args.layer1_nodenum]
 #    每一对state和action都有一个reward，这个reward应该和env返回的reward（也就是该模型的acc）和count有关。
 
 episode_reward = []
+loss = []
 
 class QFunction(chainer.Chain):
     """
@@ -89,6 +107,14 @@ class QFunction(chainer.Chain):
         return ActionValue.DiscreteActionValue(x)
         # 返回一个动作空间
 
+def matplt(var,xlabel,ylabel):
+
+    plt.figure(figsize=(20, 10))
+    plt.plot(np.arange(0, MAX_EPISODE), var)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    reward_save_path = str('plot'+'_numepisode' + str(MAX_EPISODE)+'_gamma' + str(gamma) + '_batchsize' + str(minibatch_size) + '_rbufcapacity' +str(rbuf_capacity) + '.png')
+    plt.savefig(reward_save_path)
 
 def evaluate(data,eval_env, agent, current):
     """
@@ -114,7 +140,7 @@ def evaluate(data,eval_env, agent, current):
                 shelter_num = len(data['shelter']['id'])
                 state_human = [data['shelter'].loc[i, '场所名称'] for i in range(shelter_num) if state[4][i] == 1]
 
-                utils.log(args.result_file,
+                utils.log(result_file,
                           "evaluate episode:{}, reward = {}, state count = {}, state = {}"
                           .format(current, reward, len(state_human), state_human))
                 agent.stop_episode()
@@ -127,43 +153,31 @@ def train_agent(data,env, agent, eval_env):
         terminal = False时使用act_and_train函数进行训练
         terminal = TRUE 使用stop_episode_and_train结束
     """
-
     for episode in range(MAX_EPISODE):
         epochstart = time.time()
         state = env.reset()
-        #State=np.array(list(copy.deepcopy(state).values()))
-        #
-        # print('state：')
-        # print(state)
-
         terminal = False
         reward = 0
-
         while not terminal:
             action, q, ga = agent.act_and_train(
                 state, reward)  # 此处action是否合法（即不能重复选取同一个指标）由agent判断。env默认得到的action合法。
-
             state, reward, terminal= env.step(action,data)
-            #State = np.array(list(copy.deepcopy(state).values()))
-            #print(state['is_open'])
-
             if terminal:
                 elapsed = time.time() - epochstart
                 # 打印出每一回合的结果
                 shelter_num = len(data['shelter']['id'])
                 state_human = [data['shelter'].loc[i,'场所名称'] for i in range(shelter_num )if state[4][i] == 1]
-
-
-                utils.log(args.result_file,
-                           "train episode:{}, reward = {}, state count = {},time={}, state = {}".format(episode, reward,
+                utils.log(result_file,
+                           "train episode:{},loss = {}, reward = {}, state count = {},time={}, state = {}".format(episode,agent.average_loss, reward,
                                                                                                 len(state_human),elapsed,state_human))
                 timesum += elapsed
-                #agent.stop_episode_and_train(state, reward, terminal)
+                agent.stop_episode_and_train(state, reward, terminal)
                 episode_reward.append(reward)
+                loss.append(agent.average_loss)
                 if (episode + 1) % 10 == 0 and episode != 0:
                     evaluate(data,eval_env, agent, (episode + 1) / 10)
+    utils.log(result_file,"The total time = {}".format(timesum))
 
-    utils.log(args.result_file,"The total time = {}".format(timesum))
 
 def create_agent(env):
     """
@@ -205,7 +219,7 @@ def create_agent(env):
     #         return X.astype(np.float32, copy=False)
     #     return x.astype(np.float32, copy=False)
     #phi=myfunction(x)
-    agent = DDQN.DoubleDQN(q_func, opt, rbuf, gamma=0.99,
+    agent = DDQN.DoubleDQN(q_func, opt, rbuf, gamma=0.8,
                            explorer=explorer, replay_start_size=replay_start_size,
                            target_update_interval=10,  # target q网络多久和q网络同步
                            update_interval=update_interval,
@@ -214,17 +228,12 @@ def create_agent(env):
                            soft_update_tau=1e-2,
                            phi=phi,
                            gpu=args.gpu,  # 设置是否使用gpu
-                           episodic_update_len=16)  # episodic_update=False报错，没有这个参数
+                           episodic_update_len=16)
     return agent
-
 def train():
     """
     *train函数调用Env.MyEnv构造测试环境和训练环境
     调用create_agent创建agent，调用train_agent进行训练和测试
-    """
-
-    """
-    数据读取
     """
     # 原始数据以Excel表格形式存储，三类数据分别存储在disaster、shelter、connect三个sheet中，使用pandas读取Excel
     # 以字典的形式存储所有数据，shelter对应的是避难所数据，disaster对应的是受灾点数据，connect对应的是路径距离数据
@@ -244,7 +253,7 @@ def train():
     distance = Data['connect']['distance']
     DISTANCE = distance.mean()
     r2min = 0
-    r2max = -DISTANCE * Data['disaster']['总户数'].sum()
+    r2max = DISTANCE * Data['disaster']['总户数'].sum()
     r3min = 0
     r3max = Data['disaster']['总户数'].sum()
     r_min_max = [r1min, r1max, r2min, r2max, r3min, r3max]
@@ -263,6 +272,10 @@ def train():
 if __name__ == '__main__':
 
     train()
+    matplt(episode_reward,'episode','reward')
+    matplt(loss,'episode','loss')
+
+
 
 
 
