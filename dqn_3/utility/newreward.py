@@ -15,21 +15,20 @@
     r3=∑ allocij 因为已经有了分配信息，可以直接计算被分配的人口数量
 """
 
-W1=0.05
-W2=0.15
-W3=0.8
+W1 = 0.05
+W2 = 0.15
+W3 = 0.8
 def get_reward(state,Data,r_min_max,alloc):
     """
     r_min_max是r1r2r3的上下限
     alloc是分配情况
     """
-    count=0
-    isopen=state['is_open']
+    count = 0
+    isopen = state['is_open']
     for i in range(len(isopen)):
         if isopen[i] == 1:
-            count+=1
-   # print("count:",count)
-    if count==0:
+            count += 1
+    if count == 0:
         return -1 #如果没有选中任何避难所直接返回-1
 
     r1 = 0
@@ -54,5 +53,6 @@ def get_reward(state,Data,r_min_max,alloc):
     r2 = (r2 - r_min_max[2]) / (r_min_max[3] - r_min_max[2])
     r3 = (r3 - r_min_max[4]) / (r_min_max[5] - r_min_max[4])
     r = - W1 * r1 - W2 * r2 + W3 * r3
+
     return r
 

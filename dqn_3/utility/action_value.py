@@ -41,26 +41,9 @@ class DiscreteActionValue(ActionValue):
     @cached_property
     def greedy_actions_with_state(self): #结合state的贪婪策略
         data = self.q_values.data.astype(np.float) #data是所有的Q值，也就是Q表
-        #action = np.argmax(data, axis=1)[0]  # 根据贪婪策略，选择Q值最大的动作
-        while True:
-            action = np.argmax(data, axis=1)[0] #根据贪婪策略，选择Q值最大的动作
-            # print(self.state[0][4])
-            # print(self.state[0][4][action])
-            # 设置规则降低q_value，防止盯着一个动作选
-            if action < self.n_actions and self.state[0][6][action]==1: #如果这个动作没有超出避难所个数且该动作已被选择
-                data[0][action] /= 2
-                jumpout = random.randint(1, 100)  # 为了避免死循环，以10%的概率跳出--可调的超参数
-                if jumpout < 10:
-                    break
-            else:
-                break
-
-
+        action = np.argmax(data, axis=1)[0]
         return chainer.Variable(np.array([action]).astype(np.int32))
-        # return chainer.Variable(np.array([-1]).astype(np.int32))
-        # print(self.q_values.data.argmax(axis=1).astype(np.int32))
-        # return chainer.Variable(
-        #     self.q_values.data.argmax(axis=1).astype(np.int32))
+
 
     @cached_property
     def max(self):

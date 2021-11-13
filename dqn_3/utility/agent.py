@@ -44,10 +44,10 @@ class DoubleDQN(double_dqn.DoubleDQN):  #继承了chainerrl.agents.double_dqn
                 )  #使用DiscreteActionValue类的load_current_state方法使动作空间获取当前状态
                 q = float(action_value.max.data)#最大Q值
                 action = cuda.to_cpu(action_value.greedy_actions_with_state.data)[0]#采用结合state的贪婪策略选择动作 greedy_actions_with_state
+
         """
         结合state的贪婪策略选择动作?
         """
-
         # Update states
         self.average_q *= self.average_q_decay
         self.average_q += (1 - self.average_q_decay) * q
@@ -96,9 +96,6 @@ class DoubleDQN(double_dqn.DoubleDQN):  #继承了chainerrl.agents.double_dqn
         """
         explorer.select_action是直接继承的LinearDecayEpsilonGreedy，以lambda的概率选择greedy_action，否则随机选择
         """
-        # if count == max:
-        #     # print("count = {}. max = {}".format(count,max))
-        #     action = len(state)
 
         # Update the target network
         if self.t % self.target_update_interval == 0:
